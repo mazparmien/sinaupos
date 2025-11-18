@@ -1,21 +1,29 @@
 import { Bookmark, Trash2, Minus, Plus, Pencil } from "lucide-react";
 import { useState } from "react";
 
+import TransactionSuccessModal from "../components/TransactionSuccessModal";
+
 export default function OrderPanel({
   cart = [],
   onRemove,
   onUpdateQty,
-  onUpdateNote,
+  onUpdateNote
 }) {
   const [editingNoteId, setEditingNoteId] = useState(null);
   const [noteValue, setNoteValue] = useState("");
 
-  // Order type: dinein or takeaway
   const [orderType, setOrderType] = useState("dinein");
-
-  // Nominal pembayaran
   const [selectedNominal, setSelectedNominal] = useState("");
   const [manualNominal, setManualNominal] = useState("");
+  const [customerName, setCustomerName] = useState("");
+  const [tableNumber, setTableNumber] = useState("");
+
+  const [showModal, setShowModal] = useState(false);
+  const [transactionData, setTransactionData] = useState(null);
+  const [paidAmount, setPaidAmount] = useState(0);
+  const [cartSnapshot, setCartSnapshot] = useState([]);
+
+  const token = localStorage.getItem("token");
 
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
   const tax = subtotal > 0 ? 5000 : 0;
@@ -23,11 +31,86 @@ export default function OrderPanel({
 
   const nominalOptions = [50000, 75000, 100000];
 
+  // Clear cart after payment
+  const internalResetCart = () => {
+    if (typeof onRemove === "function") {
+      for (let i = cart.length - 1; i >= 0; i--) onRemove(i);
+    }
+    setSelectedNominal("");
+    setManualNominal("");
+  };
+
+  const handlePay = async () => {
+    const paid = Number(manualNominal || selectedNominal);
+    if (paid < total) {
+      alert("Nominal pembayaran kurang!");
+      return;
+    }
+
+    // simpan nominal pembayaran
+    setPaidAmount(paid);
+
+    // freeze cart agar tetap muncul di modal
+    setCartSnapshot([...cart]);
+
+    const payload = {
+      order_type: orderType === "dinein" ? "dine-in" : "take-away",
+      customer_name: customerName,
+      table_number: orderType === "dinein" ? Number(tableNumber) : null,
+      payment_method: "cash",
+      subtotal,
+      tax,
+      total,
+      items: cart.map((item) => ({
+        product_id: item.id,
+        qty: item.qty,
+        price: item.price
+      }))
+    };
+
+    try {
+      const res = await fetch("http://localhost:5000/api/transactions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(payload)
+      });
+
+      const result = await res.json();
+
+      if (!res.ok) {
+        alert(result.message || "Gagal menyimpan transaksi");
+        return;
+      }
+
+      // Simpan data transaksi untuk modal
+      setTransactionData(result.data.transaction);
+      setShowModal(true);
+
+      internalResetCart();
+
+    } catch (error) {
+      alert("Error koneksi server");
+      console.error(error);
+    }
+  };
+
   return (
-    <div className="w-[420px] bg-white border-l border-gray-200 flex flex-col h-full">
-      {/* Content */}
+    <div className="w-[420px] bg-white border-l border-gray-200 flex flex-col h-full relative">
+
+      {/* SUCCESS MODAL */}
+      <TransactionSuccessModal
+        open={showModal}
+        onClose={() => setShowModal(false)}
+        transaction={transactionData}
+        paid={paidAmount}
+        items={cartSnapshot}
+      />
+
+      {/* TOP CONTENT */}
       <div className="flex-1 p-6 flex flex-col overflow-y-auto">
-        {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="text-lg font-semibold text-gray-800">List Order</h2>
@@ -67,7 +150,7 @@ export default function OrderPanel({
           </button>
         </div>
 
-        {/* Customer Info */}
+        {/* Customer Input */}
         <div className="grid grid-cols-2 gap-3 mb-4">
           <div>
             <label className="block text-sm font-medium text-gray-600 mb-1">
@@ -75,18 +158,23 @@ export default function OrderPanel({
             </label>
             <input
               type="text"
+              value={customerName}
+              onChange={(e) => setCustomerName(e.target.value)}
               placeholder="Anisa"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
-          {/* No.Table HANYA tampil jika Dine In */}
           {orderType === "dinein" && (
             <div>
               <label className="block text-sm font-medium text-gray-600 mb-1">
                 No.Table
               </label>
-              <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-700 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+              <select
+                value={tableNumber}
+                onChange={(e) => setTableNumber(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+              >
                 <option value="">Select</option>
                 <option value="1">01</option>
                 <option value="2">02</option>
@@ -95,7 +183,7 @@ export default function OrderPanel({
           )}
         </div>
 
-        {/* List Order */}
+        {/* ORDER LIST */}
         <div className="flex-1 overflow-y-auto space-y-3">
           {cart.length > 0 ? (
             cart.map((item, index) => (
@@ -103,8 +191,7 @@ export default function OrderPanel({
                 key={index}
                 className="bg-white border border-gray-200 rounded-lg p-3 shadow-sm hover:shadow-md transition"
               >
-                <div className="flex items-start justify-between">
-                  {/* Left */}
+                <div className="flex justify-between items-start">
                   <div className="flex gap-3">
                     <img
                       src={item.image}
@@ -120,6 +207,7 @@ export default function OrderPanel({
                         Rp {item.price.toLocaleString("id-ID")}
                       </p>
 
+                      {/* NOTE */}
                       <div className="flex items-center gap-1">
                         <button
                           onClick={() => {
@@ -140,7 +228,7 @@ export default function OrderPanel({
                               onUpdateNote(item, noteValue);
                               setEditingNoteId(null);
                             }}
-                            className="text-xs border border-gray-300 rounded px-2 py-1 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                            className="text-xs border rounded px-2 py-1"
                           />
                         ) : (
                           <p className="text-xs text-gray-500 italic">
@@ -151,7 +239,7 @@ export default function OrderPanel({
                     </div>
                   </div>
 
-                  {/* Right */}
+                  {/* QTY */}
                   <div className="flex flex-col items-end gap-2">
                     <button
                       onClick={() => onRemove(index)}
@@ -165,43 +253,44 @@ export default function OrderPanel({
                         onClick={() =>
                           onUpdateQty(item, Math.max(1, item.qty - 1))
                         }
-                        className="w-6 h-6 flex items-center justify-center border border-blue-500 rounded-full text-blue-500 hover:bg-blue-50"
+                        className="w-6 h-6 flex items-center justify-center border border-blue-500 text-blue-500 rounded-full hover:bg-blue-50"
                       >
                         <Minus size={14} />
                       </button>
 
-                      <span className="font-medium text-gray-800 text-sm">
-                        {item.qty}
-                      </span>
+                      <span className="text-sm font-medium">{item.qty}</span>
 
                       <button
                         onClick={() => onUpdateQty(item, item.qty + 1)}
-                        className="w-6 h-6 flex items-center justify-center border border-blue-500 rounded-full text-blue-500 hover:bg-blue-50"
+                        className="w-6 h-6 flex items-center justify-center border border-blue-500 text-blue-500 rounded-full hover:bg-blue-50"
                       >
                         <Plus size={14} />
                       </button>
                     </div>
                   </div>
+
                 </div>
               </div>
             ))
           ) : (
-            <div className="text-gray-400 text-sm text-center py-12">
+            <div className="text-center text-gray-400 py-10 text-sm">
               No Menu Selected
             </div>
           )}
         </div>
       </div>
 
-      {/* Bottom Section */}
+      {/* BOTTOM SECTION */}
       {cart.length > 0 && (
         <div className="border-t bg-white p-5 shadow-inner">
-          {/* Total */}
+
+          {/* TOTAL */}
           <div className="text-sm text-gray-700 mb-4">
             <div className="flex justify-between">
               <span>Sub Total</span>
               <span>Rp {subtotal.toLocaleString("id-ID")}</span>
             </div>
+
             <div className="flex justify-between mb-2">
               <span>Tax</span>
               <span>Rp {tax.toLocaleString("id-ID")}</span>
@@ -217,8 +306,10 @@ export default function OrderPanel({
             </div>
           </div>
 
-          {/* Select Nominal BUTTONS */}
-          <label className="block text-sm font-medium mb-2">Select Nominal</label>
+          {/* SELECT NOMINAL */}
+          <label className="block text-sm font-medium mb-2">
+            Select Nominal
+          </label>
 
           <div className="grid grid-cols-3 gap-2 mb-4">
             {nominalOptions.map((n, i) => (
@@ -239,27 +330,31 @@ export default function OrderPanel({
             ))}
           </div>
 
-          {/* Input manual */}
+          {/* MANUAL INPUT */}
           <label className="block text-sm font-medium mb-1">
             Enter Nominal Here
           </label>
           <input
             type="number"
-            placeholder="e.g. 150000"
             value={manualNominal}
             onChange={(e) => {
               setManualNominal(e.target.value);
               setSelectedNominal("");
             }}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-blue-500 focus:outline-none mb-5"
+            placeholder="e.g. 150000"
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-blue-500 mb-5"
           />
 
-          {/* PAY button */}
-          <button className="w-full py-3 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 shadow-md">
+          {/* PAY BUTTON */}
+          <button
+            onClick={handlePay}
+            className="w-full py-3 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 shadow-md"
+          >
             Pay
           </button>
         </div>
       )}
+
     </div>
   );
 }

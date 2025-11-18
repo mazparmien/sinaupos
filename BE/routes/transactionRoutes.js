@@ -15,7 +15,7 @@ const router = express.Router();
 router.post(
   "/",
   verifyToken,
-  authorizeRoles("admin", "kasir", "owner"),
+  authorizeRoles("admin", "cashier"),
   transactionValidator,
   validateRequest,
   createTransaction
@@ -25,7 +25,7 @@ router.post(
 router.get(
   "/",
   verifyToken,
-  authorizeRoles("admin", "owner"),
+  authorizeRoles("admin", "cashier"),
   getAllTransactions
 );
 
@@ -33,7 +33,7 @@ router.get(
 router.get(
   "/:id",
   verifyToken,
-  authorizeRoles("admin", "kasir", "owner"),
+  authorizeRoles("admin", "cashier"),
   getTransactionById
 );
 
@@ -41,7 +41,7 @@ router.get(
 router.delete(
   "/:id",
   verifyToken,
-  authorizeRoles("admin", "owner"),
+  authorizeRoles("admin"),
   deleteTransaction
 );
 

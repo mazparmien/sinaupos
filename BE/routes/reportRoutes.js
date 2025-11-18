@@ -10,7 +10,7 @@ const router = express.Router();
 router.get(
   "/sales",
   verifyToken,
-  authorizeRoles("admin", "owner"),
+  authorizeRoles("admin", "cashier"),
   reportValidator,
   validateRequest,
   getSalesReport

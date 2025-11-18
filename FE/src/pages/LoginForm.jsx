@@ -19,6 +19,9 @@ export default function LoginForm() {
     try {
       const res = await login(username, password);
       console.log("✅ Login sukses:", res);
+      if (res.user) {
+        localStorage.setItem("user", JSON.stringify(res.user));
+      }
       window.location.href = "/dashboard";
     } catch (err) {
       console.error("❌ Login gagal:", err.message);
@@ -92,7 +95,10 @@ export default function LoginForm() {
             </div>
 
             <div className="text-right mt-1">
-              <a href="/forgot-password" className="text-sm text-gray-500 hover:text-blue-600">
+              <a
+                href="/forgot-password"
+                className="text-sm text-gray-500 hover:text-blue-600"
+              >
                 Forgot Password?
               </a>
             </div>
