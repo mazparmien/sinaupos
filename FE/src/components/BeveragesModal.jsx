@@ -6,15 +6,14 @@ export default function BeveragesModal({ open, onClose, items }) {
 
   if (!open) return null;
 
-  const filtered = items.filter((i) =>
-    i.name.toLowerCase().includes(search.toLowerCase())
+  const filtered = items.filter((item) =>
+    item.title.toLowerCase().includes(search.toLowerCase())
   );
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
-      <div className="bg-white w-[450px] max-h-[90vh] rounded-xl shadow-lg p-6 relative overflow-y-auto">
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+      <div className="bg-white w-[480px] max-h-[90vh] rounded-xl shadow-lg p-6 relative overflow-y-auto">
 
-        {/* Close Button */}
         <button
           onClick={onClose}
           className="absolute right-4 top-4 text-gray-500 hover:text-gray-700"
@@ -27,7 +26,7 @@ export default function BeveragesModal({ open, onClose, items }) {
         <div className="relative mb-4">
           <input
             type="text"
-            placeholder="Enter keyword..."
+            placeholder="Enter the keyword here..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full border border-gray-300 rounded-lg px-4 py-2 pr-10 text-sm focus:ring-2 focus:ring-blue-500"
@@ -37,30 +36,32 @@ export default function BeveragesModal({ open, onClose, items }) {
 
         <table className="w-full text-sm">
           <thead>
-            <tr className="bg-gray-100">
-              <th className="text-left px-3 py-2 font-medium">Menu Name</th>
-              <th className="text-left px-3 py-2 font-medium">Total Sales</th>
+            <tr className="bg-gray-100 text-gray-700">
+              <th className="px-3 py-2 text-left font-medium">Menu Name</th>
+              <th className="px-3 py-2 text-left font-medium">Total Sales</th>
             </tr>
           </thead>
 
           <tbody>
-            {filtered.map((i, idx) => (
-              <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50">
-                <td className="px-3 py-2">{i.name}</td>
-                <td className="px-3 py-2">{i.total}</td>
-              </tr>
-            ))}
-
-            {filtered.length === 0 && (
+            {filtered.length > 0 ? (
+              filtered.map((item, i) => (
+                <tr key={i} className="hover:bg-gray-50">
+                  <td className="px-3 py-2">{item.title}</td>
+                  <td className="px-3 py-2">{item.total}</td>
+                </tr>
+              ))
+            ) : (
               <tr>
-                <td className="px-3 py-4 text-center text-gray-400" colSpan="2">
-                  No result
+                <td
+                  colSpan="2"
+                  className="px-3 py-4 text-center text-gray-400 italic"
+                >
+                  No result found
                 </td>
               </tr>
             )}
           </tbody>
         </table>
-
       </div>
     </div>
   );

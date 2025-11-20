@@ -19,18 +19,11 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
-/**
- * AdminDashboard.jsx
- * - Fetch /api/transactions and /api/products
- * - Compute statistics for cards and weekly omzet chart
- * - Uses client-side aggregation (if dataset besar, prefer server-side endpoints)
- */
+// Universal modal (copy previously provided SalesCategoryModal.jsx to this path)
+import SalesCategoryModal from "../components/SalesCategoryModal";
 
 const AdminDashboard = () => {
-  const [transactions, setTransactions] = useState([]);
-  const [productsMap, setProductsMap] = useState({});
-  const [loading, setLoading] = useState(true);
-  const [chartData, setChartData] = useState([]); // weekly data {day, Food, Beverage, Dessert}
+  // Stats from backend
   const [stats, setStats] = useState({
     totalOrders: 0,
     totalOmzet: 0,
@@ -40,128 +33,80 @@ const AdminDashboard = () => {
     desserts: 0,
   });
 
+  // Chart data (weekly)
+  const [chartData, setChartData] = useState([]);
+
+  // Modal states & data
+  const [showFoods, setShowFoods] = useState(false);
+  const [showBeverages, setShowBeverages] = useState(false);
+  const [showDesserts, setShowDesserts] = useState(false);
+
+  const [foodsData, setFoodsData] = useState([]);
+  const [beveragesData, setBeveragesData] = useState([]);
+  const [dessertsData, setDessertsData] = useState([]);
+
   const token = localStorage.getItem("token");
 
-  const fetchProducts = async () => {
+  // Fetch dashboard summary from backend
+  const fetchDashboard = async () => {
     try {
-      const res = await fetch("http://localhost:5000/api/products", {
-        headers: { Authorization: `Bearer ${token}` },
+      const res = await fetch("http://localhost:5000/api/reports/dashboard", {
+        headers: {
+          Authorization: token ? `Bearer ${token}` : "",
+          "Content-Type": "application/json",
+        },
       });
+
+      // if response is not JSON this will throw and go to catch
       const payload = await res.json();
-      const list = payload?.data || payload || [];
-      const map = {};
-      list.forEach((p) => {
-        map[p.id] = p;
+
+      if (!payload || !payload.success) {
+        console.error("Invalid dashboard payload", payload);
+        return;
+      }
+
+      const d = payload.data || {};
+
+      // set main stats (backend returns allMenu etc.)
+      setStats({
+        totalOrders: d.totalOrders ?? 0,
+        totalOmzet: d.totalOmzet ?? 0,
+        allMenuOrders: d.allMenu ?? 0,
+        foods: d.foods ?? 0,
+        beverages: d.beverages ?? 0,
+        desserts: d.desserts ?? 0,
       });
-      setProductsMap(map);
+
+      // weekly: expect array [{day: "Mon", food: 123, beverage: 45, dessert: 6}, ...]
+      if (Array.isArray(d.weekly)) {
+        const chart = d.weekly.map((w) => ({
+          day: w.day,
+          Food: Number(w.food ?? 0),
+          Beverage: Number(w.beverage ?? 0),
+          Dessert: Number(w.dessert ?? 0),
+        }));
+        setChartData(chart);
+      } else {
+        // fallback: if backend sends weekly with single "total" (older), map to Food only
+        setChartData((d.weekly || []).map((w) => ({ day: w.day, Food: Number(w.total || 0), Beverage: 0, Dessert: 0 })));
+      }
+
+      // modal items (backend keys: foodItems, beverageItems, dessertItems)
+      setFoodsData(Array.isArray(d.foodItems) ? d.foodItems.map(i => ({ title: i.title ?? i.name, total: i.total })) : []);
+      setBeveragesData(Array.isArray(d.beverageItems) ? d.beverageItems.map(i => ({ title: i.title ?? i.name, total: i.total })) : []);
+      setDessertsData(Array.isArray(d.dessertItems) ? d.dessertItems.map(i => ({ title: i.title ?? i.name, total: i.total })) : []);
     } catch (err) {
-      console.error("fetchProducts error:", err);
+      console.error("Dashboard fetch error:", err);
     }
   };
 
-  const fetchTransactions = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch("http://localhost:5000/api/transactions", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const payload = await res.json();
-      const list = payload?.data || payload || [];
-      setTransactions(list);
-    } catch (err) {
-      console.error("fetchTransactions error:", err);
-      setTransactions([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Aggregate stats and chart after fetch
   useEffect(() => {
-    (async () => {
-      await fetchProducts();
-      await fetchTransactions();
-    })();
+    fetchDashboard();
+    // If you want periodic refresh, add interval here (optional)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Recompute stats & chart when transactions or productsMap change
-  useEffect(() => {
-    // stats
-    const s = {
-      totalOrders: transactions.length,
-      totalOmzet: 0,
-      allMenuOrders: 0,
-      foods: 0,
-      beverages: 0,
-      desserts: 0,
-    };
-
-    // Prepare weekly aggregation (Mon..Sun)
-    const weekOrder = {
-      Mon: { Food: 0, Beverage: 0, Dessert: 0 },
-      Tue: { Food: 0, Beverage: 0, Dessert: 0 },
-      Wed: { Food: 0, Beverage: 0, Dessert: 0 },
-      Thu: { Food: 0, Beverage: 0, Dessert: 0 },
-      Fri: { Food: 0, Beverage: 0, Dessert: 0 },
-      Sat: { Food: 0, Beverage: 0, Dessert: 0 },
-      Sun: { Food: 0, Beverage: 0, Dessert: 0 },
-    };
-
-    transactions.forEach((t) => {
-      // omzet: use t.total if available; fallback sum(items)
-      let tSubtotal = 0;
-      const items = t.items || [];
-      items.forEach((it) => {
-        const price = Number(it.price || 0);
-        const qty = Number(it.qty || 0);
-        tSubtotal += price * qty;
-
-        s.allMenuOrders += qty;
-
-        const prod = productsMap[it.product_id];
-        const category = (prod && prod.category) || (it.category || "");
-        const catLower = String(category).toLowerCase();
-
-        if (catLower.includes("food")) s.foods += qty;
-        else if (catLower.includes("bever") || catLower.includes("drink")) s.beverages += qty;
-        else if (catLower.includes("dessert") || catLower.includes("cake")) s.desserts += qty;
-
-        // weekly omzet by category
-        try {
-          const date = new Date(t.created_at);
-          const dayShort = date.toLocaleDateString("en-US", { weekday: "short" }); // Mon, Tue...
-          const key = dayShort;
-          if (key && weekOrder[key]) {
-            if (catLower.includes("food")) weekOrder[key].Food += price * qty;
-            else if (catLower.includes("bever") || catLower.includes("drink")) weekOrder[key].Beverage += price * qty;
-            else if (catLower.includes("dessert") || catLower.includes("cake")) weekOrder[key].Dessert += price * qty;
-          }
-        } catch (e) {
-          // ignore date parse error
-        }
-      });
-
-      // prefer t.total if backend provides tax etc.
-      s.totalOmzet += Number(t.total ?? tSubtotal);
-    });
-
-    // Build chart array in Mon..Sun order
-    const orderDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-    const chartArr = orderDays.map((d) => ({
-      day: d,
-      Food: Math.round(weekOrder[d].Food),
-      Beverage: Math.round(weekOrder[d].Beverage),
-      Dessert: Math.round(weekOrder[d].Dessert),
-    }));
-
-    setStats(s);
-    setChartData(chartArr);
-  }, [transactions, productsMap]);
-
-  // Helpers for display
-  const formatCurrency = (v) =>
-    `Rp ${Number(v || 0).toLocaleString("id-ID")}`;
+  const formatCurrency = (v) => `Rp ${Number(v || 0).toLocaleString("id-ID")}`;
 
   return (
     <div className="flex h-screen bg-gray-50 text-gray-800">
@@ -174,78 +119,82 @@ const AdminDashboard = () => {
           <div className="flex justify-between items-center mb-6">
             <h1 className="text-2xl font-semibold text-gray-800">Dashboard</h1>
             <p className="text-sm text-gray-500">
-              Today, <span className="font-medium text-gray-700">{new Date().toLocaleDateString("id-ID", { weekday: "long", day: "2-digit", month: "long", year: "numeric" })}</span>
+              Today,{" "}
+              <span className="font-medium text-gray-700">
+                {new Date().toLocaleDateString("id-ID", {
+                  weekday: "long",
+                  day: "2-digit",
+                  month: "long",
+                  year: "numeric",
+                })}
+              </span>
             </p>
           </div>
 
-          {/* Cards */}
+          {/* CARDS */}
           <div className="grid grid-cols-6 gap-4 mb-8">
-            <div className="bg-white rounded-xl p-4 shadow-sm hover:shadow-md border border-gray-100">
-              <div className="flex items-center justify-between mb-2">
-                <div className="p-2 rounded-lg bg-blue-50 text-blue-600">
-                  <ShoppingBag size={22} />
-                </div>
+            <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+              <div className="p-2 rounded-lg bg-blue-50 inline-block">
+                <ShoppingBag size={22} className="text-blue-600" />
               </div>
-              <h3 className="text-sm text-gray-500">Total Orders</h3>
+              <h3 className="text-sm text-gray-500 mt-3">Total Orders</h3>
               <p className="text-lg font-semibold mt-1">{stats.totalOrders}</p>
             </div>
 
-            <div className="bg-white rounded-xl p-4 shadow-sm hover:shadow-md border border-gray-100">
-              <div className="flex items-center justify-between mb-2">
-                <div className="p-2 rounded-lg bg-indigo-50 text-indigo-600">
-                  <CreditCard size={22} />
-                </div>
+            <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+              <div className="p-2 rounded-lg bg-indigo-50 inline-block">
+                <CreditCard size={22} className="text-indigo-600" />
               </div>
-              <h3 className="text-sm text-gray-500">Total Omzet</h3>
+              <h3 className="text-sm text-gray-500 mt-3">Total Omzet</h3>
               <p className="text-lg font-semibold mt-1">{formatCurrency(stats.totalOmzet)}</p>
             </div>
 
-            <div className="bg-white rounded-xl p-4 shadow-sm hover:shadow-md border border-gray-100">
-              <div className="flex items-center justify-between mb-2">
-                <div className="p-2 rounded-lg bg-green-50 text-green-600">
-                  <Utensils size={22} />
-                </div>
+            <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+              <div className="p-2 rounded-lg bg-green-50 inline-block">
+                <Utensils size={22} className="text-green-600" />
               </div>
-              <h3 className="text-sm text-gray-500">All Menu Orders</h3>
+              <h3 className="text-sm text-gray-500 mt-3">All Menu Orders</h3>
               <p className="text-lg font-semibold mt-1">{stats.allMenuOrders}</p>
             </div>
 
-            <div className="bg-white rounded-xl p-4 shadow-sm hover:shadow-md border border-gray-100 cursor-pointer">
-              <div className="flex items-center justify-between mb-2">
-                <div className="p-2 rounded-lg bg-blue-50 text-blue-500">
-                  <Utensils size={22} />
-                </div>
+            <div
+              className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 cursor-pointer"
+              onClick={() => setShowFoods(true)}
+            >
+              <div className="p-2 rounded-lg bg-blue-50 inline-block">
+                <Utensils size={22} className="text-blue-500" />
               </div>
-              <h3 className="text-sm text-gray-500">Foods</h3>
+              <h3 className="text-sm text-gray-500 mt-3">Foods</h3>
               <p className="text-lg font-semibold mt-1">{stats.foods}</p>
             </div>
 
-            <div className="bg-white rounded-xl p-4 shadow-sm hover:shadow-md border border-gray-100 cursor-pointer">
-              <div className="flex items-center justify-between mb-2">
-                <div className="p-2 rounded-lg bg-blue-50 text-blue-400">
-                  <CupSoda size={22} />
-                </div>
+            <div
+              className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 cursor-pointer"
+              onClick={() => setShowBeverages(true)}
+            >
+              <div className="p-2 rounded-lg bg-blue-50 inline-block">
+                <CupSoda size={22} className="text-blue-400" />
               </div>
-              <h3 className="text-sm text-gray-500">Beverages</h3>
+              <h3 className="text-sm text-gray-500 mt-3">Beverages</h3>
               <p className="text-lg font-semibold mt-1">{stats.beverages}</p>
             </div>
 
-            <div className="bg-white rounded-xl p-4 shadow-sm hover:shadow-md border border-gray-100 cursor-pointer">
-              <div className="flex items-center justify-between mb-2">
-                <div className="p-2 rounded-lg bg-blue-50 text-blue-300">
-                  <CakeSlice size={22} />
-                </div>
+            <div
+              className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 cursor-pointer"
+              onClick={() => setShowDesserts(true)}
+            >
+              <div className="p-2 rounded-lg bg-blue-50 inline-block">
+                <CakeSlice size={22} className="text-blue-300" />
               </div>
-              <h3 className="text-sm text-gray-500">Desserts</h3>
+              <h3 className="text-sm text-gray-500 mt-3">Desserts</h3>
               <p className="text-lg font-semibold mt-1">{stats.desserts}</p>
             </div>
           </div>
 
-          {/* Chart */}
+          {/* CHART */}
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-            <div className="flex justify-between items-center mb-4">
+            <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-gray-800">Total Omzet (Weekly)</h2>
-
               <div className="flex gap-3 text-sm">
                 <input
                   type="date"
@@ -279,6 +228,28 @@ const AdminDashboard = () => {
           </div>
         </div>
       </div>
+
+      {/* Modals */}
+      <SalesCategoryModal
+        open={showFoods}
+        onClose={() => setShowFoods(false)}
+        title="Foods"
+        items={foodsData}
+      />
+
+      <SalesCategoryModal
+        open={showBeverages}
+        onClose={() => setShowBeverages(false)}
+        title="Beverages"
+        items={beveragesData}
+      />
+
+      <SalesCategoryModal
+        open={showDesserts}
+        onClose={() => setShowDesserts(false)}
+        title="Desserts"
+        items={dessertsData}
+      />
     </div>
   );
 };

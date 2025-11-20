@@ -9,6 +9,9 @@ import userRoutes from "./routes/userRoutes.js";
 import productRoutes from "./routes/productRoutes.js";
 import transactionRoutes from "./routes/transactionRoutes.js";
 import settingRoutes from "./routes/settingRoutes.js";
+import reportRoutes from "./routes/reportRoutes.js";
+
+
 
 const app = express();
 app.use(cors());
@@ -27,6 +30,7 @@ console.log("📂 Serving static files from:", path.join(__dirname, "uploads"));
 app.use("/api/users", userRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/transactions", transactionRoutes);
+app.use("/api/reports", reportRoutes);
 app.use("/api/settings", settingRoutes);
 
 app.get("/", (req, res) => res.send("✅ POS Backend API is running..."));

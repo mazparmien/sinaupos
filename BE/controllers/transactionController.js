@@ -108,7 +108,8 @@ export const getAllTransactions = async (req, res) => {
         },
         {
           model: TransactionItem,
-          include: [{ model: Product, attributes: ["title", "price"] }],
+          include: [{ model: Product, attributes: ["id", "title", "price", "category"] }],
+          
         },
       ],
       order: [["created_at", "DESC"]],
@@ -132,7 +133,7 @@ export const getTransactionById = async (req, res) => {
       include: [
         {
           model: TransactionItem,
-          include: [{ model: Product, attributes: ["title", "price"] }],
+          include: [{ model: Product, attributes: ["id", "title", "price", "category"] }],
         },
         {
           model: User,

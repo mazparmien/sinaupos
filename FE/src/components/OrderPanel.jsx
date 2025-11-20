@@ -54,7 +54,7 @@ export default function OrderPanel({
     setCartSnapshot([...cart]);
 
     const payload = {
-      order_type: orderType === "dinein" ? "dine-in" : "take-away",
+      order_type: orderType === "dinein" ? "dine-in" : "takeaway",
       customer_name: customerName,
       table_number: orderType === "dinein" ? Number(tableNumber) : null,
       payment_method: "cash",

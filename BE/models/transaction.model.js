@@ -24,7 +24,7 @@ export default (sequelize) => {
       },
       order_type: {
         type: DataTypes.ENUM("dine-in", "takeaway", "online"),
-        allowNull: false,
+        allowNull: true,
       },
       customer_name: {
         type: DataTypes.STRING(50),
